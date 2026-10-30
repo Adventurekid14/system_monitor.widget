@@ -26,14 +26,23 @@ GPU_RAW=$(ioreg -r -d 1 -c IOAccelerator 2>/dev/null \
   | grep -o '"Device Utilization %"=[0-9]*' | head -1 | grep -o '[0-9]*$')
 
 # ── CPU Temperature ────────────────────────────────────────────────────────
-CPU_TEMP_RAW=$(/opt/homebrew/bin/macmon pipe -i 1 2>/dev/null | head -1 \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(round(d['temp']['cpu_temp_avg']))" 2>/dev/null)
+MACMON_BIN=$(command -v macmon 2>/dev/null)
+[[ -z "$MACMON_BIN" && -x /opt/homebrew/bin/macmon ]] && MACMON_BIN=/opt/homebrew/bin/macmon
+[[ -z "$MACMON_BIN" && -x /usr/local/bin/macmon ]] && MACMON_BIN=/usr/local/bin/macmon
+CPU_TEMP_RAW=""
+if [[ -n "$MACMON_BIN" ]]; then
+  CPU_TEMP_RAW=$("$MACMON_BIN" pipe -s 1 -i 1000 2>/dev/null | python3 -c \
+    'import json,sys; d=json.loads(sys.stdin.readline()); t=(d.get("temp") or {}).get("cpu_temp_avg"); print(round(t) if isinstance(t,(int,float)) else "")' 2>/dev/null)
+fi
 
 # ── Battery ────────────────────────────────────────────────────────────────
 BATT_INFO=$(pmset -g batt 2>/dev/null)
 BATT_PCT=$(echo "$BATT_INFO" | grep -Eo '[0-9]+%' | head -1 | tr -d '%')
 CHARGING="false"
 echo "$BATT_INFO" | grep -qiE '\bcharging\b' && CHARGING="true"
+
+# ── Disk storage ──────────────────────────────────────────────────────────
+read -r DISK_USED_K DISK_FREE_K DISK_TOTAL_K DISK_PCT <<< "$(df -k /System/Volumes/Data 2>/dev/null | awk 'NR==2 {gsub(/%/,"",$5); print $3, $4, $2, $5}')"
 
 # ── Wait for CPU measurement ───────────────────────────────────────────────
 wait "$TOP_PID" 2>/dev/null
@@ -82,6 +91,12 @@ cpu_temp = safe_float("""${CPU_TEMP_RAW}""")
 batt = safe_float("""${BATT_PCT}""")
 charging = """${CHARGING}""" == "true"
 
+# Disk storage (df reports 1K blocks)
+disk_used_k  = safe_float("""${DISK_USED_K}""")
+disk_free_k  = safe_float("""${DISK_FREE_K}""")
+disk_total_k = safe_float("""${DISK_TOTAL_K}""")
+disk_pct     = safe_float("""${DISK_PCT}""")
+
 # Network  (bytes since boot — just diff the two samples; sampling gap ≈ 1 s)
 n1_in  = safe_float("""${NET1_IN}""")
 n2_in  = safe_float("""${NET2_IN}""")
@@ -98,6 +113,10 @@ print(json.dumps({
     "cpu_temp": cpu_temp,
     "battery":  batt,
     "charging": charging,
+    "disk_used_gb":  round(disk_used_k * 1024 / 1_000_000_000, 1) if disk_used_k is not None else None,
+    "disk_free_gb":  round(disk_free_k * 1024 / 1_000_000_000, 1) if disk_free_k is not None else None,
+    "disk_total_gb": round(disk_total_k * 1024 / 1_000_000_000, 1) if disk_total_k is not None else None,
+    "disk_pct":      round(disk_pct) if disk_pct is not None else None,
     "net_up":   net_up,
     "net_down": net_down,
 }))

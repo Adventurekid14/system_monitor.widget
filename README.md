@@ -1,24 +1,25 @@
 # System Monitor Widget for Übersicht
 
-A dark, minimal system monitor widget for macOS Übersicht. Displays live system stats including CPU usage with animated line graph, GPU usage, RAM usage (used/total GB), CPU temperature, battery percentage with charging indicator, and network upload/download speed. Updates every 5 seconds. Built with JavaScript and a shell script backend using native macOS commands.
+A dark, glassy system monitor widget for macOS Übersicht. Displays live CPU usage with an animated line graph, RAM, GPU, disk usage, CPU temperature, battery (with charging indicator) and network upload/download speed. Updates every 3 seconds.
 
 ![screenshot](screenshot.png)
 
 ## Features
 
 - 📊 Live CPU usage with animated moving graph
+- 💾 RAM usage with used / total GB
 - 🎮 GPU usage percentage
-- 💾 RAM usage with total GB display
+- 🗄️ Disk usage of the macOS Data volume, with free space
 - 🌡️ CPU temperature
 - 🔋 Battery percentage with charging indicator
 - 🌐 Network upload & download speed
-- 🔄 Auto-updates every 5 seconds
-- 🎨 Sleek dark semi-transparent card design
+- 🖱️ Draggable; the position is remembered across refreshes and restarts
+- 🎨 Dark semi-transparent glass card design
 
 ## Requirements
 
 - macOS with Apple Silicon (M1 / M2 / M3 / M4)
-- [Übersicht](https://tracesof.net/uebersicht/) installed
+- [Übersicht](https://tracesof.net/uebersicht/) installed, with **Interaction** enabled for dragging
 - [macmon](https://github.com/vladkens/macmon) for CPU temperature (no sudo required):
 
 ```bash
@@ -27,14 +28,13 @@ brew install macmon
 
 ## Installation
 
-1. Download or clone this repository.
-2. Copy the `system_monitor.widget` folder into your Übersicht widgets directory:
+Symlink (or copy) this folder into Übersicht's widgets directory:
 
-```
-~/Library/Application Support/Übersicht/widgets/
+```bash
+ln -s "$PWD" ~/Library/Application\ Support/Übersicht/widgets/system_monitor.widget
 ```
 
-3. Übersicht will load the widget automatically. It appears in the **bottom-right corner** of your desktop.
+It appears in the top-left corner; drag it wherever you like.
 
 ## Configuration
 
@@ -46,7 +46,8 @@ Open `index.jsx` to adjust:
 | `MAX_HISTORY` | `60` | Number of CPU graph data points |
 | `ACCENT / GREEN / ORANGE / RED / PURPLE` | — | Theme colors |
 
-The widget position (`bottom: 20px; right: 20px`) can be changed in the `className` export in `index.jsx`.
+To reset a dragged position, remove the `system-monitor-widget-pos` key from Übersicht's
+localStorage (or drag it back).
 
 ## How It Works
 
@@ -55,6 +56,7 @@ The widget position (`bottom: 20px; right: 20px`) can be changed in the `classNa
 - `top` — CPU usage
 - `vm_stat` — RAM usage
 - `ioreg` — GPU utilization
+- `df` — disk usage of the Data volume
 - `macmon pipe` — CPU temperature (Apple Silicon, no sudo)
 - `pmset` — battery status and charging state
 - `netstat` — network throughput (two samples, ~1 second apart)
