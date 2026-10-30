@@ -22,21 +22,72 @@ export const command =
 export const refreshFrequency = 3000
 
 export const className = `
-  bottom: 20px;
-  right: 20px;
+  top: 20px;
+  left: 20px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
   font-size: 11px;
   color: rgba(255,255,255,0.9);
   width: 280px;
-  background: rgba(10, 12, 18, 0.90);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  background: rgba(22, 27, 38, 0.90);
+  backdrop-filter: blur(34px) saturate(190%);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
   border-radius: 18px;
-  border: 1px solid rgba(255,255,255,0.09);
+  border: 1px solid rgba(255,255,255,0.18);
   padding: 16px 18px 14px;
   box-sizing: border-box;
-  box-shadow: 0 12px 48px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+  box-shadow: 0 16px 52px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.18), inset 0 -1px 0 rgba(255,255,255,0.04);
 `
+
+// ── Drag + remembered position ─────────────────────────────────────────────
+// Übersicht has no native dragging; move the widget's positioned container
+// and persist its coordinates in localStorage.
+const POS_KEY = "system-monitor-widget-pos"
+
+function initDrag(node) {
+  if (!node) return
+  let box = node.parentElement
+  while (box && box !== document.body && !["absolute", "fixed"].includes(getComputedStyle(box).position)) {
+    box = box.parentElement
+  }
+  if (!box || box === document.body || box.__dragInit) return
+  box.__dragInit = true
+  box.style.cursor = "move"
+  box.style.userSelect = "none"
+
+  try {
+    const s = JSON.parse(localStorage.getItem(POS_KEY) || "null")
+    if (s && typeof s.left === "number" && typeof s.top === "number") {
+      box.style.left = s.left + "px"
+      box.style.top = s.top + "px"
+    }
+  } catch (_) {}
+
+  let drag = null
+  const onMove = (e) => {
+    if (!drag) return
+    box.style.left = drag.ox + (e.clientX - drag.sx) + "px"
+    box.style.top = drag.oy + (e.clientY - drag.sy) + "px"
+  }
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove)
+    document.removeEventListener("mouseup", onUp)
+    if (drag) {
+      try {
+        localStorage.setItem(POS_KEY, JSON.stringify({
+          left: parseInt(box.style.left, 10) || 0,
+          top: parseInt(box.style.top, 10) || 0,
+        }))
+      } catch (_) {}
+    }
+    drag = null
+  }
+  box.addEventListener("mousedown", (e) => {
+    drag = { sx: e.clientX, sy: e.clientY, ox: box.offsetLeft, oy: box.offsetTop }
+    e.preventDefault()
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup", onUp)
+  })
+}
 
 // ── Render ─────────────────────────────────────────────────────────────────
 export const render = ({ output }) => {
@@ -86,7 +137,7 @@ export const render = ({ output }) => {
   const fillPts = `0,${H_GRAPH} ${graphPts} ${W_GRAPH},${H_GRAPH}`
 
   return (
-    <div style={{ boxSizing: "border-box" }}>
+    <div style={{ boxSizing: "border-box" }} ref={initDrag}>
 
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 13 }}>
@@ -105,10 +156,10 @@ export const render = ({ output }) => {
         />
         <div style={{
           marginTop: 5,
-          background: "rgba(0,0,0,0.35)",
+          background: "rgba(0,0,0,0.22)",
           borderRadius: 7,
           overflow: "hidden",
-          border: `1px solid ${cpuColor}22`,
+          border: `1px solid ${cpuColor}33`,
         }}>
           <svg width={W_GRAPH} height={H_GRAPH} style={{ display: "block" }}>
             <defs>
@@ -156,12 +207,34 @@ export const render = ({ output }) => {
         <Bar pct={gpuPct || 0} color={gpuColor} />
       </div>
 
+      {/* Disk storage */}
+      <div style={{ marginBottom: 11 }}>
+        <RowHeader
+          label="DISK"
+          sub={typeof s.disk_used_gb === "number" && typeof s.disk_total_gb === "number" ? `${s.disk_used_gb} / ${s.disk_total_gb} GB used` : ""}
+          value={typeof s.disk_pct === "number" ? `${s.disk_pct}%` : "N/A"}
+          color={typeof s.disk_pct === "number" && s.disk_pct >= 90 ? RED : typeof s.disk_pct === "number" && s.disk_pct >= 75 ? ORANGE : GREEN}
+        />
+        <Bar
+          pct={typeof s.disk_pct === "number" ? s.disk_pct : 0}
+          color={typeof s.disk_pct === "number" && s.disk_pct >= 90 ? RED : typeof s.disk_pct === "number" && s.disk_pct >= 75 ? ORANGE : GREEN}
+        />
+        {s.disk_free_gb !== null && s.disk_free_gb !== undefined && (
+          <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginTop: 4 }}>
+            {s.disk_free_gb} GB available
+          </div>
+        )}
+      </div>
+
       {/* CPU Temperature */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 11 }}>
-        <span style={labelStyle}>CPU TEMP</span>
-        <span style={{ color: ORANGE, fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
-          {s.cpu_temp !== null && s.cpu_temp !== undefined ? `${s.cpu_temp}°C` : "N/A"}
-        </span>
+      <div style={{ marginBottom: 11 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+          <span style={labelStyle}>CPU TEMP</span>
+          <span style={{ color: ORANGE, fontSize: 13, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+            {typeof s.cpu_temp === "number" ? `${s.cpu_temp}°C` : "N/A"}
+          </span>
+        </div>
+        {typeof s.cpu_temp === "number" && <Bar pct={s.cpu_temp} color={ORANGE} />}
       </div>
 
       {/* Divider */}
@@ -228,10 +301,10 @@ const Bar = ({ pct, color }) => (
 const NetCard = ({ dir, value, color }) => (
   <div style={{
     flex: 1,
-    background: "rgba(255,255,255,0.04)",
+    background: "rgba(255,255,255,0.075)",
     borderRadius: 9,
     padding: "6px 9px",
-    border: "1px solid rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.10)",
   }}>
     <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, marginBottom: 2, letterSpacing: "0.5px" }}>{dir}</div>
     <div style={{ color, fontSize: 11, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
